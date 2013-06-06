@@ -1,0 +1,27 @@
+<!doctype html>
+<html data-ng-app="">
+  <head>
+    <script src="../Scripts/angular.min.js"></script>
+    <script type="text/javascript" src="todo.js"></script>
+    <script src="http://documentcloud.github.com/underscore/underscore-min.js"></script>
+
+    <link rel="stylesheet" type="text/css" href="bootstrap/css/bootstrap.css">
+    <link rel="stylesheet" type="text/css" href="todo.css">
+  </head>
+  <body>
+    <div data-ng-controller="TodoCtrl">
+      <h2> Total todos: {{getTotalTodos()}}</h2>
+      <ul class="unstyled">
+        <li data-ng-repeat="todo in todos">
+          <input type="checkbox" data-ng-model="todo.done" />
+          <span class="done-{{todo.done}}">{{todo.text}}</span>
+        </li>
+      </ul>
+      <form class="form-horizontal">
+        <input type="text" data-ng-model="formTodoText" data-ng-model-instant />
+        <button class="bnt" data-ng-click="addTodo()"><i class="icon-plus"></i>Add</button>
+      </form>
+      <button class="bnt-large" data-ng-click="clearCompleted()"><i class="icon-trash"></i>Limpar Completo(s)</button>
+    </div>
+  </body>
+</html>

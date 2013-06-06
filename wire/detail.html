@@ -1,0 +1,27 @@
+<form>
+  <div class="control-group" data-ng-class="{error: myForm.name.$invalid}">
+    <label>Name</label>
+    <input type="text" name="name" data-ng-model="project.name" required/>
+    <span data-ng-show="myForm.name.$error.required" class="help.inline">
+      Campo Obrigat&oacute;rio</span>
+  </div>
+
+  <div class="control-group" data-ng-class="{error?myForm.site.$invalid}">
+    <label>Name</label>
+    <input type="url" name="site" data-ng-model="project.site" required />
+    <span data-ng-show="myForm.name.$error.required" class="help.inline">
+      Campo Obrigat&oacute;</span>
+    <span data-ng-show="myForm.name.$error.required" class="help.inline">  
+      N&atilde;o &eacute; uma URL V&aacute;lida</span>
+  </div>
+
+  <label>Descri&ccedil;&atilde;o</label>
+  <textarea name="description" data-ng-model="project.description"></textarea>
+
+  <br />
+  <a href="#/" class="bnt">Cancel</a>
+  <button data-ng-click="save()" data-ng-disabled="isClean() || myForm.$invalid"
+    class="btn btn-primary">Salvar</button>
+  <button data-ng-click="destroy()"
+    data-ng-show="project._id" class="btn btn-danger">Excluir</button>
+</form>
