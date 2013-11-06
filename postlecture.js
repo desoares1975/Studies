@@ -19,12 +19,15 @@ function errorHandler(err, req, res, next) {
 app.use(errorHandler);
 
 app.get('/', function (req, res, next) {
-  var name = req.params.name,
-      getVar1 = req.query.getVar1,
-      getVar2 = req.query.getVar2;
-
-      res.render('hello', { name: name, getVar1: getVar1, getVar2: getVar2 });
+      res.render('fruitpicker', { 'fruits': ['apple', 'orange', 'banana', 'peach'] });
 });
-
+app.post('/favorite_fruit', function (req, res, next)   {
+  var favorite = req.body.fruit;
+  if (typeof favorite == 'undefined') {
+    next(Error('Please coose a fruit'));
+  } else {
+    res.send('Your favorite fruit is ' + favorite);
+  }
+});
 app.listen(3000);
 console.log('Server litening on port 3000');
