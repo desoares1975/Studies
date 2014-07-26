@@ -53,4 +53,4 @@ console.log(theCopy + '//theCopy');
 var toDecode = new Buffer('Conteúdo do buffer que será decodificado');
 var decoded = toDecode.toString();
 console.log(toDecode[0], toDecode[1], toDecode[2], toDecode[3] + '//toDecode');
-console.log(decoded +'//decoded');
+console.log(decoded +'//decoded');//escrevendo este comentário//escrevendo um novo comentário n oarquivo!!!!
