@@ -1,4 +1,6 @@
 //retornando estatísticas de um arquivo
+var fs = require('fs');
+var myPathFile = '/home/desoares/projetos/Studies/professional_node/buffer.js';
 fs.stat(myPathFile, function (err, statistics) {
 	if (err) { throw err; }
 

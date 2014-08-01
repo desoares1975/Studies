@@ -1,12 +1,14 @@
-JSON aceita, bsicamete,dois tipos de entrada, arrays [] e dicionários {}
+//JSON aceita, bsicamete,dois tipos de entrada, arrays [] e dicionários {}
 
-mongo shell
+//mongo shell
 
 help
 //auto-complete com o tab
 db // -retorna a base de dados atual
 mongorestore folder_name //retoaura a base de dados ou coleções que tenha sido 
 //armazenadas em uma pasta usando-se o comando mongodump 
+show dbs//lista as bases de dadoslocais
+show collections;//lista as coleções na DB atual
 
 db.collection.insert({ field: "value", field_2: "value_2", field_n: "value_n"});
 
@@ -836,3 +838,253 @@ db.inventory.aggregate([
 		"colors": {$addToSet: "$colors"}
 	}
 ])
+/*
+APPLICATION ENGENERING
+Quando se usa replicação em Mongo deve sempre haver, no mínimo, 3 nós.
+Os tipos de nós são:
+	Regular - pode ser primário ou secundário
+	Arbiter - apenas pode votar para eleger o primário, não armazena dados nem pode ser primário
+	Delayed - grava os dados com atraso em relação ao nó primário prioridade 0, não pode ser primário
+	Hidden - também tem prioridade ajustada para zero, o que quer dizer que não pode ser primário
+
+Todos os nós pode votar para eleger um nó primário caso o primário caia.
+
+//Consistência de Escrita
+
+Usando-se ReplicaSet você pode escrever apenas no nó primário. Por padrão você também só pode ler do nó primário,
+porém, você pode configurar para ler dos nós secundários. Neste caso é possível que você leia dados obsoletos 
+já que há um atraso na atualização dos nós secundários. Não há garantia no tempo de atraso porque a replicação 
+dos dados é assíncrona.
+Mantendo-se o padão do Mongodb a escrita é fortemente consistente. Caso o nó primário caia 
+não é possível escrever na base de dados até que a eleição de um novo nó primário.
+
+*/
+
+//Iniciando o replicaset
+//primeiro você deve criar as pastas onde os dados serão armazenados
+//mkdir -p /data/rs1 /data/rs2 /data/rs3
+///então criamos os precessos para cada um deles
+mongod --replSet rs1 --logpath "1.log" --dbpath data/rs --port 27017 --fork
+mongod --replSet rs1 --logpath "2.log" --dbpath data/rs --port 27018 --fork
+mongod --replSet rs1 --logpath "3.log" --dbpath data/rs --port 27019 --fork
+//cada um deles tem que ser aberto em uma porta diferente
+
+config = { _id: "m101", members:[
+          { _id : 0, host : "localhost:27017"},
+          { _id : 1, host : "localhost:27018"},
+          { _id : 2, host : "localhost:27019"} ]
+};
+
+rs.initiate(config);
+rs.status();//mostra o estado da replicaSet
+
+//implicações do desenvolvedor com relação ao uso de ReplicaSet
+
+/*
+lista de seeds - o driver de estar ciente d epelomenos um membro do replicaSet
+perocupações de escrita - w, j e w-timeout
+preferência de leitura - vai ler do primário apenas ou dos sedundário também
+eerros podem acontecer - é preciso verificar exeções quando você escreve e lê para ter certeza 
+de que você entende a aplicação e quais dados ão consistentes
+
+*/
+
+rs.isMaster();//diz se o nó atual é master ou secundário
+rs.slaveOk();//permite ler apartir de um nó secundário
+
+/*
+Há uma coleção chamada oplog.rs que serve para sincronizar os nós secundários do rs com o nó primário.
+Os secundários buscam nesta coleção e comparam com suas próprias oplog.rs e copiam os dados não atualizados.
+A criação de índices também aparece no oplog
+*/
+
+//Failover e Rollback
+
+/*
+Rollbacks acontecerão sempre que o nó primário cair (failover) e contiver escritas que não estava nos servidores secundários. 
+Quando o antigo nó primário voltar como secundário ele criará um arquivo com estes dados que poderão ser inseridos 
+manualmente no novo nó primário.
+Para evitar este cenário deve-se configurar o conjunto do ReplicaSet para esperar que a maioria dos nós tenha os dados 
+configurando o paraâmetro w=1
+
+Fail over dentro do driver de nodejs:
+No driver do nodejs é possível indicar apenas um no do replicaSet que a aplicação será capaz de utilizar corretamente
+o conjunto, porém caso o nó indicado ao driver do nodejs esteja "off" a aplicação não saberá onde conectar-se, por isso é 
+recomendavel que se indique todos os nós.
+Qaundo ocorre uma falha no nó primário o driver do node cria um buffer para armazenas todas as escritas até que seja
+eleito um novo nó primário.
+
+Configuração de Escrita Write Concerne
+É uma maneira de especificar o comportmento das escritas no mongodb.
+
+	w : 1 - padrão -> envia a escrita para o nó primário e notifica o usuário assim que o primário toma conhecimento 
+		deste sucesso.
+	w : 0 - o driver notifica  sucesso assim que a escrita é enviada sem receber resposta
+
+	w : 2 - somente notifica sucesso apos o nó primário e, no mínimo, um nó secundário informam sucesso. Os demais 
+	números indicam quantos nós devem responder sucesso antes de notificar o usuário.
+
+	w : 'j' - retorna sucesso após escrever no diário do nó primário o que permite recuperação em caso de 
+	fail over uma vez que garante que os dados estejam no disco quando notifica o sucesso.
+
+	w : 'majority' - retorna sucesso quando a maioria dos nós reportar o sucesso da escrita
+
+	w : 1, j : 1 - alé de esperar confirmação do nó primário espera a escrita no diário do nó primário
+
+*/
+
+//PREFERÊNCIAS DE LEITURA
+/*
+Por padrão as leituras sempre irão para o nó primário,
+no entanto é possível configurar as leituras para:
+	- primary 
+	- secondary
+	- prefered (só não lerá o nó preferencial quando não for possível lê-lo, primaruPrefered, secondaryPrefered)
+	- nearest
+
+Pode ainda ser tag set, não aboradado no curso
+Tag Sets
+
+Tag sets allow you to target read operations to specific members of a replica set.
+
+Custom read preferences and write concerns evaluate tags sets in different ways. Read preferences consider the value of a tag when selecting a member to read from. Write concerns ignore the value of a tag to when selecting a member, except to consider whether or not the value is unique.
+
+You can specify tag sets with the following read preference modes:
+
+primaryPreferred
+secondary
+secondaryPreferred
+nearest
+Tags are not compatible with mode primary and, in general, only apply when selecting a secondary member of a set for a read operation. However, the nearest read mode, when combined with a tag set, selects the matching member with the lowest network latency. This member may be a primary or secondary.
+
+extraído de http://docs.mongodb.org/manual/core/read-preference/
+*/
+
+//PARANDO O SERVIDOR
+
+/*
+Para parar o servidor primeiro voce deve se conectar à coleção admin usando o comando:
+>use admin
+depois executando o comando:
+>db.shutdownServer();
+*/
+
+//ERROS DE REDE
+
+/*
+Ainda que você possa setar a escrita para w=1, j=1 é possível que escritas bem sucedidas retornem erros em 
+virtude de falhas de conexão
+*/
+
+//SHARDING
+
+/*
+sharding é a maneira od mongodb de escalonar. Permite colocar uma coleção em mútiplos servidores
+	 ___     ___ 	 ___	 ___	 ___
+	|   |   |	|   |   |	|	|	|	|
+	|___|	|___|   |___|	|___|	|___|
+	 S1		 S2      S3		 S4		 S5
+      |______|_______|_______|________|
+                     |
+	  /\	       mongos
+	 _||_           _|_
+	/()()\         /   \
+   |  rs  |       | App | 
+    \_()_/         \___/
+
+Cada shard é, normalmente, um conjunto de ReplicaSet. Quem faz a comunicação entre o mongodb e 
+a aplicação é o mongos. Ele funciona com "RANGE BASED" e o conceito de shard key.
+Em uma coleção pedidos, pedido_id eria a "shard key". Informando-se a shard key para aplicação permite que uma query 
+busque os dados diretamente na shard correta, o não uso envia a query para todos as shards.
+Se você utilizar um ambiente com shard você deverá incluir a shard key em todos os inserts. 
+Pode-se fazer sharding em toda a DB ou apenas em uma coleção, ou coleções que você quer. É possível haver mais de um 
+driver mongos, funcionando de forma bastandte similar ao replicaSet.
+*/
+
+// Building a Sharded Environment.
+
+
+# Andrew Erlichson
+# 10gen
+# script to start a sharded environment on localhost
+
+# clean everything up
+echo "killing mongod and mongos"
+killall mongod
+killall monogs
+echo "removing data files"
+rm -rf /data/config
+rm -rf /data/shard*
+
+
+# start a replica set and tell it that it will be a shord0
+mkdir -p /data/shard0/rs0 /data/shard0/rs1 /data/shard0/rs2
+mongod --replSet s0 --logpath "s0-r0.log" --dbpath /data/shard0/rs0 --port 37017 --fork --shardsvr --smallfiles
+mongod --replSet s0 --logpath "s0-r1.log" --dbpath /data/shard0/rs1 --port 37018 --fork --shardsvr --smallfiles
+mongod --replSet s0 --logpath "s0-r2.log" --dbpath /data/shard0/rs2 --port 37019 --fork --shardsvr --smallfiles
+
+sleep 5
+# connect to one server and initiate the set
+mongo --port 37017 << 'EOF'
+config = { _id: "s0", members:[
+          { _id : 0, host : "localhost:37017" },
+          { _id : 1, host : "localhost:37018" },
+          { _id : 2, host : "localhost:37019" }]};
+rs.initiate(config)
+EOF
+
+# start a replicate set and tell it that it will be a shard1
+mkdir -p /data/shard1/rs0 /data/shard1/rs1 /data/shard1/rs2
+mongod --replSet s1 --logpath "s1-r0.log" --dbpath /data/shard1/rs0 --port 47017 --fork --shardsvr --smallfiles
+mongod --replSet s1 --logpath "s1-r1.log" --dbpath /data/shard1/rs1 --port 47018 --fork --shardsvr --smallfiles
+mongod --replSet s1 --logpath "s1-r2.log" --dbpath /data/shard1/rs2 --port 47019 --fork --shardsvr --smallfiles
+
+sleep 5
+
+mongo --port 47017 << 'EOF'
+config = { _id: "s1", members:[
+          { _id : 0, host : "localhost:47017" },
+          { _id : 1, host : "localhost:47018" },
+          { _id : 2, host : "localhost:47019" }]};
+rs.initiate(config)
+EOF
+
+# start a replicate set and tell it that it will be a shard2
+mkdir -p /data/shard2/rs0 /data/shard2/rs1 /data/shard2/rs2
+mongod --replSet s2 --logpath "s2-r0.log" --dbpath /data/shard2/rs0 --port 57017 --fork --shardsvr --smallfiles
+mongod --replSet s2 --logpath "s2-r1.log" --dbpath /data/shard2/rs1 --port 57018 --fork --shardsvr --smallfiles
+mongod --replSet s2 --logpath "s2-r2.log" --dbpath /data/shard2/rs2 --port 57019 --fork --shardsvr --smallfiles
+
+sleep 5
+
+mongo --port 57017 << 'EOF'
+config = { _id: "s2", members:[
+          { _id : 0, host : "localhost:57017" },
+          { _id : 1, host : "localhost:57018" },
+          { _id : 2, host : "localhost:57019" }]};
+rs.initiate(config)
+EOF
+
+
+# now start 3 config servers
+mkdir -p /data/config/config-a /data/config/config-b /data/config/config-c 
+mongod --logpath "cfg-a.log" --dbpath /data/config/config-a --port 57040 --fork --configsvr --smallfiles
+mongod --logpath "cfg-b.log" --dbpath /data/config/config-b --port 57041 --fork --configsvr --smallfiles
+mongod --logpath "cfg-c.log" --dbpath /data/config/config-c --port 57042 --fork --configsvr --smallfiles
+
+
+# now start the mongos on a standard port
+mongos --logpath "mongos-1.log" --configdb localhost:57040,localhost:57041,localhost:57042 --fork
+echo "Waiting 60 seconds for the replica sets to fully come online"
+sleep 60
+echo "Connnecting to mongos and enabling sharding"
+
+# add shards and enable sharding on the test db
+mongo <<'EOF'
+db.adminCommand( { addShard : "s0/"+"localhost:37017" } );
+db.adminCommand( { addShard : "s1/"+"localhost:47017" } );
+db.adminCommand( { addShard : "s2/"+"localhost:57017" } );
+db.adminCommand({enableSharding: "test"})
+db.adminCommand({shardCollection: "test.grades", key: {student_id:1}});
+EOF
+
